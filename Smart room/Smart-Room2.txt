@@ -1,0 +1,154 @@
+#include <SoftwareSerial.h>
+#include <DFRobotDFPlayerMini.h>
+
+SoftwareSerial mySerial(11, 10); // RX, TX
+DFRobotDFPlayerMini myDFPlayer;
+
+const int ldr = A0;          // حساس الإضاءة
+const int pirPin = 2;        // حساس الحركة
+const int trig2 = 3;         // حساس المسافة الثاني (الباب الثاني)
+const int echo2 = 4;         // حساس المسافة الثاني (الباب الثاني)
+const int trig1 = 5;         // حساس المسافة الأول (الباب الأول)
+const int echo1 = 6;         // حساس المسافة الأول (الباب الأول)
+const int relayLEDRGB = 7;   // ريليه إضاءة RGB
+const int relayLED = 8;      // ريليه الإضاءة
+const int relayFan = 9;      // ريليه المروحة
+const int LED1 = 12;        // LED1
+const int buttonFan = 13;
+const int buttonLEDrgb = 14;
+int ultra1 = 0 ;
+int ultra2 = 0 ;
+long duration1, distance1; // مدة و مسافة حساس المسافة الأول
+long duration2, distance2; // مدة و مسافة حساس المسافة الثاني
+bool sensor1Triggered = false;
+bool sensor2Triggered = false;
+int v = true;
+int ledState = LOW;         // حالة الـ LED
+int buttonState;            // قراءة الحالة الحالية للزر
+int lastButtonState = LOW;  // قراءة الحالة السابقة للزر
+unsigned long lastDebounceTime = 0;  // وقت آخر تبديل للحالة
+unsigned long debounceDelay = 50;    // تأخير منع الاهتزاز (debounce)
+
+
+void setup() {
+  pinMode(LED1, OUTPUT);
+  pinMode(pirPin, INPUT);
+  pinMode(trig2, OUTPUT);
+  pinMode(echo2, INPUT);
+  pinMode(trig1, OUTPUT);
+  pinMode(echo1, INPUT);
+  pinMode(relayLEDRGB, OUTPUT);
+  pinMode(relayLED, OUTPUT);
+  pinMode(relayFan, OUTPUT);
+  pinMode(buttonFan, INPUT);
+  pinMode(buttonLEDrgb, INPUT);
+
+
+  // تهيئة الحالة الابتدائية للريليه
+  digitalWrite(relayLEDRGB, HIGH);
+  digitalWrite(relayLED, HIGH);
+  digitalWrite(relayFan, HIGH);
+  digitalWrite(LED1, LOW);
+  //digitalWrite(ledPin, ledState);  // تأكد من أن LED في حالته الأولية
+
+  Serial.begin(9600);
+  mySerial.begin(9600); // تهيئة الاتصال التسلسلي البرمجي مع DFPlayer Mini
+
+  if (!myDFPlayer.begin(mySerial)) {
+    Serial.println("Unable to begin:");
+    Serial.println("1. Please recheck the connection!");
+    Serial.println("2. Please insert the SD card!");
+    while (true);
+  }
+
+  Serial.println("DFPlayer Mini online.");
+  myDFPlayer.volume(30);  // ضبط مستوى الصوت (0~30)
+}
+
+void loop() {
+  // قراءة الحساسات
+  int lightLevel = analogRead(ldr);
+  int pir = digitalRead(pirPin);
+  int butonFan = digitalRead(butonFan);
+  int butonLEDrgb = digitalRead(butonLEDrgb);
+ /* distance1 = readDistance(trig1, echo1);
+  distance2 = readDistance(trig2, echo2);
+*/
+  // طباعة القيم للتشخيص
+  Serial.print("Light Level: ");
+  Serial.println(lightLevel);
+  Serial.print("PIR: ");
+  Serial.println(pir);
+  Serial.print("Distance 1: ");
+  Serial.println(distance1);
+  Serial.print("Distance 2: ");
+  Serial.println(distance2);
+  Serial.print("ultra1 : ");
+  Serial.println(ultra1);
+  Serial.print("ultra2 : ");
+  Serial.println(ultra2);
+
+    // قراءة مسافة الحساس الأول
+  digitalWrite(trig1, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trig1, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trig1, LOW);
+  duration1 = pulseIn(echo1, HIGH);
+  distance1 = duration1/ 58.2;
+
+  // قراءة مسافة الحساس الثاني
+  digitalWrite(trig2, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trig2, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trig2, LOW);
+  duration2 = pulseIn(echo2, HIGH);
+  distance2 = duration2/ 58.2;
+  if (pir == HIGH){
+    v = true;
+  }
+
+  if(distance2 < 190 || distance2 > 200){
+    sensor1Triggered = true;
+    v = true; 
+  }
+
+  if (distance1 < 190 || distance1 > 200) {
+  // تشغيل LED1 والصوت
+    sensor2Triggered = true;
+    v = false ;
+  } 
+ 
+  
+  //اطفاء الضوء عند الخروج من الغرفه
+  if (sensor2Triggered || sensor1Triggered) {
+    digitalWrite(relayLED, HIGH);
+    sensor1Triggered = false;
+    sensor2Triggered = false;
+    ultra2++;
+    ultra1--;
+  }
+  if (pir == HIGH) {
+    ultra2--;
+    ultra1++;}
+   // التحقق من وجود شخص في الغرفه والضوء منخفض
+  if (pir == HIGH && v == true && lightLevel < 50) {
+    // تشغيل إضاءة الغرفة
+    digitalWrite(relayLED, LOW);
+  } 
+   // التحقق من وجود شخص أمام الباب 
+  if (distance1 < 190 || distance1 > 200) {
+  // تشغيل LED1 والصوت
+    digitalWrite(LED1, HIGH);
+    delay(3000); 
+   // myDFPlayer.play(1);  // تشغيل الصوت
+  } else {
+    digitalWrite(LED1, LOW);
+  }
+ /* if (puttonFan == HIGH){
+    digitalWrite(relayFan, LOW);
+  }*/
+  }
+
+

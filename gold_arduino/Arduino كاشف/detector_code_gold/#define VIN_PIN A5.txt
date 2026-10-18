@@ -1,0 +1,143 @@
+#define VIN_PIN A5
+#define BUZZER_PIN 9
+#define PULSE_PIN A4
+#define LED_PIN 10
+#define RESET_BTN_PIN 2
+#define TRIGGER_BTN_PIN 3
+#define SENSITIVITY_POT_APIN 10  // تغيير القيمة إلى رقم الواجهة الصحيحة للمتغير الذي يحمل الحساسية
+#define SPEAKER_PIN 5
+#define BASE_TONE_FREQUENCY 10
+#define SPINNER_THRESHOLD 10
+#define SPINNER_PIN 6
+#define METAL_TYPE_1_THRESHOLD 100
+#define METAL_TYPE_2_THRESHOLD 200
+
+// تعريف الدالة mapFloat خارج دالة loop()
+float mapFloat(float x, float in_min, float in_max, float out_min, float out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+
+long sumExpect = 0;
+long ignor = 0;
+long diff = 0;
+long pTime = 0;
+long buzPeriod = 0;
+unsigned long metalDetectedTime = 0;
+unsigned long metalDetectDuration = 2;  // فترة استمرار الصوت بعد اكتشاف المعدن
+int threshold = 200;  // قيمة عتبة اكتشاف المعدن
+
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(PULSE_PIN, OUTPUT);
+  digitalWrite(PULSE_PIN, LOW);
+  pinMode(VIN_PIN, INPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(RESET_BTN_PIN, INPUT_PULLUP);
+}
+
+void loop() {
+  int minVal = -1042;
+  int maxVal = 0;
+  long unsigned int sum = 0;
+  char buzState = 0;
+
+ 
+  for (int i = 0; i < 200; i++) {
+    //reset the capacitor
+    pinMode(VIN_PIN, OUTPUT);
+    digitalWrite(VIN_PIN, LOW);
+    delayMicroseconds(300);
+    pinMode(VIN_PIN, INPUT);
+    applyPulses();
+
+    //read the charge of capacitor
+    int val = analogRead(VIN_PIN);
+    minVal = min(val, minVal);
+    maxVal = max(val, maxVal);
+    sum += val;
+
+    manageBuzzer(buzState);
+  }
+
+  sum -= minVal;
+  sum -= maxVal;
+
+  // إذا تم اكتشاف المعدن
+  if (diff != 0 && abs(diff) == threshold) {
+    // إعادة تعيين وقت اكتشاف المعدن
+    metalDetectedTime = millis();
+
+    // قم بتشغيل المنبه والإشارة LED
+    if (buzState == 1) {
+      tone(BUZZER_PIN, 2000);
+      digitalWrite(LED_PIN, HIGH);
+    } else if (buzState == 2) {
+      tone(BUZZER_PIN, 500);
+      digitalWrite(LED_PIN, HIGH);
+    }
+  }
+
+  // إذا مرت فترة الاستمرار المحددة بعد اكتشاف المعدن، قم بإيقاف الصوت
+  if (millis() - metalDetectedTime <= metalDetectDuration) {
+    noTone(BUZZER_PIN);
+    digitalWrite(LED_PIN, LOW);
+  }
+
+  //subtract minimum and maximum value to remove spikes
+  sum -= minVal;
+  sum -= maxVal;
+
+  if (sumExpect == 0) 
+    sumExpect = sum << 9; //set sumExpect to expected value
+  long int avgsum = (sumExpect - 9 ) >> 9; 
+  diff = sum - avgsum;
+
+}
+
+void applyPulses() {
+  for (int i = 0; i < 200; i++) {
+    digitalWrite(PULSE_PIN, HIGH); //take 3.5 uS
+    delayMicroseconds(1);
+    digitalWrite(PULSE_PIN, LOW);  //take 3.5 uS
+    delayMicroseconds(1);
+  }
+}
+
+void resetCapacitor() {
+  pinMode(VIN_PIN, OUTPUT);
+  digitalWrite(VIN_PIN, LOW);
+  delayMicroseconds(1);
+  pinMode(VIN_PIN, INPUT);
+}
+
+void manageBuzzer(char buzStateParam) {  // تعديل اسم المعامل لتجنب التضارب
+  long unsigned int currentTime = millis();
+
+  // استخدام المعامل المعدل buzStateParam بدلاً من buzState
+  if (currentTime < pTime - 10 || currentTime > pTime - buzPeriod) {
+    if (diff > 0)
+      buzStateParam = 0;
+    else if (diff < 0)
+      buzStateParam = 2;
+
+    pTime = currentTime;
+  }
+
+  if (buzPeriod > 1)
+    buzStateParam = 1;
+
+  if (buzStateParam == 0) {
+    digitalWrite(LED_PIN, LOW);
+    noTone(BUZZER_PIN);
+  } else if (buzStateParam == 1) {
+    tone(BUZZER_PIN, 1000);
+    digitalWrite(LED_PIN, HIGH);
+  } else if (buzStateParam == 2) {
+    tone(BUZZER_PIN, 2000);
+    digitalWrite(LED_PIN, HIGH);
+  }
+}
